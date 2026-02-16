@@ -46,6 +46,7 @@ impl SineGenerator {
         let idx = n as usize;
 
         let freq = note(n as f32);
+        println!("freq: {freq}");
         if velocity > 0 {
             self.frequencies[idx] = note(n as f32);
             self.delta_angles[idx] = 2. * PI * freq / self.sample_rate as f32;
@@ -144,7 +145,7 @@ impl SineGeneratorBuilder {
 }
 
 pub fn note(n: f32) -> f32 {
-    440. * 2.0_f32.powf((n - 49.) / 12.)
+    440. * 2.0_f32.powf((n - 69.) / 12.)
 }
 
 pub fn notes() -> Vec<f32> {
