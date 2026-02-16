@@ -11,12 +11,17 @@ use std::{
     time::Duration,
 };
 
-use cpal::{SupportedBufferSize, SupportedStreamConfigRange};
-use macros;
+use cpal::{
+    SupportedBufferSize, SupportedStreamConfigRange,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+};
+use macros::midi;
 use rusb::EndpointDescriptor;
 use sine_generator::{SineGenerator, note};
 
 use libc::{ECHO, ICANON, STDERR_FILENO, TCSANOW, c_char, getchar, poll, pollfd};
+
+// midi!();
 
 fn update_midi(synth: Arc<RwLock<SineGenerator>>, n: u8, velocity: u8) {
     let mut guard = synth.write().unwrap();
@@ -25,16 +30,18 @@ fn update_midi(synth: Arc<RwLock<SineGenerator>>, n: u8, velocity: u8) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host = cpal::default_host();
-    let output_device = host
-        .devices()?
-        .find(|device| device.supports_output())
-        .unwrap();
-    println!(
-        "{:#?}",
-        output_device
-            .supported_output_configs()?
-            .collect::<Vec<SupportedStreamConfigRange>>()
-    );
+    let output_device = host.default_output_device().unwrap();
+
+    //   host
+    //     .devices()?
+    //     .find(|device| device.supports_output())
+    //     .unwrap();
+    // println!(
+    //     "{:#?}",
+    //     output_device
+    //         .supported_output_configs()?
+    //         .collect::<Vec<SupportedStreamConfigRange>>()
+    // );
 
     let stream_config = output_device.default_output_config()?;
 
