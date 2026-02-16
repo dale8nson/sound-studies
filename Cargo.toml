@@ -1,0 +1,12 @@
+[package]
+name = "sound-studies"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cpal = "0.17.1"
+rustfft = "6.4.1"
+macros = { path = "macros"}
+bimap = "0.6.3"
+libc = "0.2.182"
+rusb = "0.9.4"
