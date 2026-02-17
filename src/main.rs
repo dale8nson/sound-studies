@@ -1,5 +1,7 @@
 #![allow(unsafe_code)]
+mod midi_event_handler;
 mod sine_generator;
+
 use std::{
     cell::RefCell,
     ffi::c_str,
@@ -23,26 +25,21 @@ use libc::{ECHO, ICANON, STDERR_FILENO, TCSANOW, c_char, getchar, poll, pollfd};
 
 // midi!();
 
-fn update_midi(synth: Arc<RwLock<SineGenerator>>, n: u8, velocity: u8) {
+#[inline]
+fn note_on(synth: Arc<RwLock<SineGenerator>>, n: u8, velocity: u8) {
     let mut guard = synth.write().unwrap();
     guard.note(n, velocity);
+}
+
+#[inline]
+fn vol(synth: Arc<RwLock<SineGenerator>>, volume: u8) {
+    let mut guard = synth.write().unwrap();
+    guard.update_volume(volume);
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host = cpal::default_host();
     let output_device = host.default_output_device().unwrap();
-
-    //   host
-    //     .devices()?
-    //     .find(|device| device.supports_output())
-    //     .unwrap();
-    // println!(
-    //     "{:#?}",
-    //     output_device
-    //         .supported_output_configs()?
-    //         .collect::<Vec<SupportedStreamConfigRange>>()
-    // );
-
     let stream_config = output_device.default_output_config()?;
 
     let buf_sz = stream_config.buffer_size();
@@ -143,12 +140,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // .partial(220., 5, 10.)
     // .finish();
     // let sound_clone = sound;
+
     let sound_iter = sound.clone();
     let os = output_device.build_output_stream::<f32, _, _>(
         &output_device.default_output_config()?.config(),
         move |data, _cb_info| {
             data.into_iter().for_each(|s| {
-                *s = sound_iter.write().unwrap().next().unwrap() * 0.0125;
+                let mut guard = sound_iter.write().unwrap();
+                let vol = guard.volume();
+                *s = guard.next().unwrap() * vol;
             });
         },
         |e| {
@@ -179,11 +179,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         keyboard.read_interrupt(129_u8, &mut buf.as_mut_slice(), Duration::from_millis(0))?;
-        println!("note: {}  velocity: {}", buf[2], buf[3]);
-        let n = buf[2];
-        let velocity = buf[3];
+        println!(
+            "{}\t",
+            buf.iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<String>>()
+                .join(" ")
+        );
 
-        update_midi(sound.clone(), n, velocity);
+        // let n = buf[2];
+        // let velocity = buf[3];
+
+        // note_on(sound.clone(), n, velocity);
+
+        match buf[0] {
+            0xb => {
+                println!("vol: {}", buf[3]);
+                let v = buf[3];
+                vol(sound.clone(), v);
+            }
+            0x9 => {
+                let n = buf[2];
+                let velocity = buf[3];
+                println!("note: {}  velocity: {}", n, velocity);
+                note_on(sound.clone(), buf[2], buf[3]);
+            }
+            _ => {}
+        }
+
         // std::io::stdin().read_exact(&mut input)?;
         // let res = unsafe { poll(&mut kbd, 1, 0) };
         // println!("errno: {res}");

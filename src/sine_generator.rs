@@ -13,6 +13,7 @@ pub struct SineGenerator {
     sample_rate: u32,
     channels: u16,
     delta_angles: Vec<f32>,
+    volume: f32,
 }
 
 impl SineGenerator {
@@ -26,12 +27,15 @@ impl SineGenerator {
             .map(|freq| 2. * PI * *freq / sample_rate as f32)
             .collect();
 
+        let volume = 0.0;
+
         Self {
             frequencies,
             phases,
             sample_rate,
             channels,
             delta_angles,
+            volume,
         }
     }
 
@@ -46,7 +50,7 @@ impl SineGenerator {
         let idx = n as usize;
 
         let freq = note(n as f32);
-        println!("freq: {freq}");
+        // println!("freq: {freq}");
         if velocity > 0 {
             self.frequencies[idx] = note(n as f32);
             self.delta_angles[idx] = 2. * PI * freq / self.sample_rate as f32;
@@ -56,6 +60,14 @@ impl SineGenerator {
             self.delta_angles[idx] = 0.0;
             self.phases[idx] = 0.0;
         }
+    }
+
+    pub fn update_volume(&mut self, volume: u8) {
+        self.volume = volume as f32 / 127.;
+    }
+
+    pub fn volume(&self) -> f32 {
+        self.volume
     }
 
     pub fn partial(&mut self, freq: f32, partial: usize, amplitude: f32) {
@@ -85,6 +97,7 @@ impl SineGenerator {
         let channels = config.channels();
         let mut delta_angles = Vec::<f32>::new();
         delta_angles.resize(89, 0.0);
+        let volume = 0.0;
 
         Self {
             frequencies,
@@ -92,6 +105,7 @@ impl SineGenerator {
             sample_rate,
             channels,
             delta_angles,
+            volume,
         }
     }
 }
