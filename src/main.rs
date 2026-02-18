@@ -83,10 +83,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("interfaces: {:#?}", interfaces);
 
     println!("\n\n\n{:#?}", OUTPUT_DEVICE.default_output_config());
-    let A4 = note(49.);
-    let E3 = note(44.);
-    let C4 = note(52.);
-    println!("A4: {A4}");
 
     let sound = Arc::new(RwLock::new(SineGenerator::default(STREAM_CONFIG.clone())));
     // .build()
@@ -113,17 +109,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let sound_clone = sound;
 
     let sound_iter = sound.clone();
+    // println!("sound_iter: {sound_iter:#?}");
     let os = OUTPUT_DEVICE.build_output_stream::<f32, _, _>(
         &OUTPUT_DEVICE.default_output_config()?.config(),
         move |data, _cb_info| {
             data.into_iter().for_each(|s| {
                 let mut guard = sound_iter.write().unwrap();
                 let vol = guard.volume();
-                *s = guard.next().unwrap() * vol;
+                let next = guard.next().unwrap();
+                // println!("next: {next}");
+                *s = next * vol;
             });
         },
         |e| {
-            println!("{e}");
+            // println!("{e}");
         },
         None,
     )?;
@@ -171,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (ktx, krx) = mpsc::channel::<char>();
 
-    let key_event_handle = thread::spawn(move || {
+    let _key_event_handle = thread::spawn(move || {
         loop {
             let key = unsafe { getchar() };
             let key = char::from_u32(key as u32).unwrap();
@@ -183,8 +182,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     os.play()?;
-
-    let end_time = std::time::Instant::now() + Duration::from_secs(10);
 
     loop {
         if let Ok(buf) = rx.try_recv() {
@@ -233,34 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = libc::tcsetattr(STDERR_FILENO, TCSANOW, &mut original_termios);
     }
 
-    thread_handle.join().unwrap();
-    key_event_handle.join().unwrap();
+    // thread_handle.join().unwrap();
+    // _key_event_handle.join().unwrap();
     Ok(())
 }
-
-// inputs:
-// σ = sample rate
-// c = channels
-// f = frequency
-// β = buffer size
-// j = buffer index
-// i = frame count
-// Φ = frame size (samples per frame)
-//
-// λ = samples per cycle
-// ν = frames per cycle
-// n = sample index
-//
-// output: θ = angle to compute sine of for given frame count and frame index
-//
-// Φ = β / c
-// ν = σ / Φ
-// λ = σ / f
-// ν = λ / Φ
-// n = i * Φ + j
-// rads per sample = 2π / λ
-// θ  = n * 2π / λ
-//    = (i * Φ + j) * (2π / λ)
-//    = ((i * (β / c)) + j) * (2π / (σ / f))
-//
-// samples per cycle = 44100 / 440
