@@ -23,7 +23,7 @@ pub static MIDI: LazyLock<Vec<Vec<f32>>> =
 #[derive(Debug, Clone)]
 pub struct SineGenerator {
     note_mask: BitSet,
-    frequencies: Vec<Vec<f32>>,
+    velocities: Vec<f32>,
     phases: Vec<Vec<f32>>,
     sample_rate: u32,
     channels: u16,
@@ -38,6 +38,8 @@ impl SineGenerator {
         let sample_rate = config.sample_rate();
         let channels = config.channels();
         let delta_angles: Vec<Vec<f32>> = MIDI.clone();
+        let mut velocities = Vec::<f32>::new();
+        velocities.resize(154, 0.0);
 
         // frequencies
         //   .iter()
@@ -54,7 +56,7 @@ impl SineGenerator {
 
         Self {
             note_mask,
-            frequencies,
+            velocities,
             phases,
             sample_rate,
             channels,
@@ -72,7 +74,7 @@ impl SineGenerator {
 
     pub fn note(&mut self, n: u8, velocity: u8) {
         let idx = n as usize;
-
+        self.velocities[idx] = velocity as f32 / 127. / self.volume();
         // println!("freq: {freq}");
         if velocity > 0 {
             let _ = self.note_mask.insert(idx);
@@ -89,20 +91,20 @@ impl SineGenerator {
         self.volume
     }
 
-    pub fn partial(&mut self, n: u8, freq: f32, partial: usize, amplitude: f32) {
-        let idx = n as usize;
-        let mut ks = Vec::<f32>::new();
-        ks.resize(partial, 0.0);
-        let t = 2. * PI * freq / self.sample_rate as f32;
-        let f: f32 = ks
-            .iter()
-            .enumerate()
-            .map(|(k, _)| amplitude * f32::cos(2. * PI * k as f32 * freq * t + amplitude.abs()))
-            .sum();
+    // pub fn partial(&mut self, n: u8, freq: f32, partial: usize, amplitude: f32) {
+    //     let idx = n as usize;
+    //     let mut ks = Vec::<f32>::new();
+    //     ks.resize(partial, 0.0);
+    //     let t = 2. * PI * freq / self.sample_rate as f32;
+    //     let f: f32 = ks
+    //         .iter()
+    //         .enumerate()
+    //         .map(|(k, _)| amplitude * f32::cos(2. * PI * k as f32 * freq * t + amplitude.abs()))
+    //         .sum();
 
-        // println!("partial {partial} for frequency {freq}: {f}");
-        self.frequencies[idx].push(freq + f);
-    }
+    //     // println!("partial {partial} for frequency {freq}: {f}");
+    //     self.frequencies[idx].push(freq + f);
+    // }
 
     pub fn build(self) -> SineGeneratorBuilder {
         SineGeneratorBuilder(self)
@@ -130,10 +132,12 @@ impl SineGenerator {
         // println!("delta_angles.len(): {}", delta_angles.len());
         let volume = 0.5;
         let note_mask = BitSet::new();
+        let mut velocities = Vec::<f32>::new();
+        velocities.resize(154, 0.0);
 
         Self {
             note_mask,
-            frequencies,
+            velocities,
             phases,
             sample_rate,
             channels,
@@ -150,8 +154,9 @@ impl Iterator for SineGenerator {
             .note_mask
             .iter()
             .map(|idx| {
-                let mut phase = self.phases[idx].iter_mut();
+                let phase = self.phases[idx].iter_mut();
                 let delta_angles = self.delta_angles[idx].iter_mut();
+                let velocity = self.velocities[idx];
 
                 let next_phase = phase.zip(delta_angles).scan(0.0, |_state, (p, a)| {
                     *p += *a;
@@ -161,7 +166,7 @@ impl Iterator for SineGenerator {
                     Some(p)
                 });
 
-                next_phase.fold(0.0, |acc, p| acc + f32::sin(*p))
+                next_phase.fold(0.0, |acc, p| acc + f32::sin(*p) * velocity)
             })
             .sum();
         if sin > 0. {
@@ -171,15 +176,15 @@ impl Iterator for SineGenerator {
     }
 }
 
-impl Add for SineGenerator {
-    type Output = Self;
-    fn add(mut self, rhs: Self) -> Self::Output {
-        self.frequencies.extend(rhs.frequencies);
-        self.phases.extend(rhs.phases);
-        self.delta_angles.extend(rhs.delta_angles);
-        self
-    }
-}
+// impl Add for SineGenerator {
+//     type Output = Self;
+//     fn add(mut self, rhs: Self) -> Self::Output {
+//         // self.frequencies.extend(rhs.frequencies);
+//         self.phases.extend(rhs.phases);
+//         self.delta_angles.extend(rhs.delta_angles);
+//         self
+//     }
+// }
 
 pub struct SineGeneratorBuilder(SineGenerator);
 
@@ -189,10 +194,10 @@ impl SineGeneratorBuilder {
     //     self
     // }
 
-    pub fn partial(mut self, n: u8, freq: f32, partial: usize, amplitude: f32) -> Self {
-        self.0.partial(n, freq, partial, amplitude);
-        self
-    }
+    // pub fn partial(mut self, n: u8, freq: f32, partial: usize, amplitude: f32) -> Self {
+    //     self.0.partial(n, freq, partial, amplitude);
+    //     self
+    // }
 
     pub fn finish(self) -> SineGenerator {
         self.0
@@ -232,8 +237,6 @@ pub fn notes(sample_rate: u32) -> Vec<Vec<f32>> {
     for n in 1..=153 {
         let idx = n as usize;
         let freq = note(n as f32);
-        // let part_1 = delta(freq + 0.002, sample_rate);
-        // let part_2 = delta(freq - 0.002, sample_rate);
         // let part_1 = partial_delta(freq, 2, sample_rate, 0.25);
         // let part_2 = partial_delta(freq, 3, sample_rate, 0.25);
         // let part_3 = partial_delta(freq, 4, sample_rate, 0.1);
