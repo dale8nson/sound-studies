@@ -1,10 +1,21 @@
 use std::{
     ops::Add,
-    sync::{Mutex, MutexGuard},
+    sync::{LazyLock, Mutex, MutexGuard},
 };
 
-use cpal::SupportedStreamConfig;
+use cpal::{
+    Host, SupportedStreamConfig,
+    traits::{DeviceTrait, HostTrait},
+};
 use std::f32::consts::PI;
+
+static HOST: LazyLock<Host> = std::sync::LazyLock::new(|| cpal::default_host());
+pub static OUTPUT_DEVICE: LazyLock<cpal::Device> =
+    std::sync::LazyLock::new(|| HOST.default_output_device().unwrap());
+pub static STREAM_CONFIG: LazyLock<SupportedStreamConfig> =
+    std::sync::LazyLock::new(|| OUTPUT_DEVICE.default_output_config().unwrap());
+pub static MIDI: LazyLock<Vec<f32>> =
+    std::sync::LazyLock::new(|| notes(STREAM_CONFIG.sample_rate()));
 
 #[derive(Debug, Clone)]
 pub struct SineGenerator {
@@ -27,7 +38,7 @@ impl SineGenerator {
             .map(|freq| 2. * PI * *freq / sample_rate as f32)
             .collect();
 
-        let volume = 0.0;
+        let volume = 0.5;
 
         Self {
             frequencies,
@@ -49,10 +60,10 @@ impl SineGenerator {
     pub fn note(&mut self, n: u8, velocity: u8) {
         let idx = n as usize;
 
-        let freq = note(n as f32);
+        let freq = MIDI[n as usize];
         // println!("freq: {freq}");
         if velocity > 0 {
-            self.frequencies[idx] = note(n as f32);
+            self.frequencies[idx] = MIDI[n as usize];
             self.delta_angles[idx] = 2. * PI * freq / self.sample_rate as f32;
             self.phases[idx] = 0.0;
         } else {
@@ -97,7 +108,7 @@ impl SineGenerator {
         let channels = config.channels();
         let mut delta_angles = Vec::<f32>::new();
         delta_angles.resize(89, 0.0);
-        let volume = 0.0;
+        let volume = 0.5;
 
         Self {
             frequencies,
@@ -162,10 +173,27 @@ pub fn note(n: f32) -> f32 {
     440. * 2.0_f32.powf((n - 69.) / 12.)
 }
 
-pub fn notes() -> Vec<f32> {
-    let mut frequencies = Vec::<f32>::new();
-    for n in 1..=88 {
-        frequencies.push(note(n as f32));
+pub fn partial(freq: f32, partial: usize, sample_rate: u32, amplitude: f32) -> f32 {
+    let mut ks = Vec::<f32>::new();
+    ks.resize(partial, 0.0);
+    let t = 2. * PI * freq / sample_rate as f32;
+    let f: f32 = ks
+        .iter()
+        .enumerate()
+        .map(|(k, _)| amplitude * f32::cos(2. * PI * k as f32 * freq * t + amplitude.abs()))
+        .sum();
+
+    f
+}
+
+pub fn notes(sample_rate: u32) -> Vec<Vec<f32>> {
+    let mut frequencies = Vec::<Vec<f32>>::new();
+
+    for n in 1..=172 {
+        let mut freq = note(n as f32);
+        frequencies[n as usize].push(freq);
+        freq += partial(freq, 2, sample_rate, 10.5);
+        frequencies.push(freq);
     }
     frequencies
 }
