@@ -74,7 +74,7 @@ impl SineGenerator {
 
     pub fn note(&mut self, n: u8, velocity: u8) {
         let idx = n as usize;
-        self.velocities[idx] = velocity as f32 / 127. / self.volume();
+        self.velocities[idx] = velocity as f32 / 127. * self.volume();
         // println!("freq: {freq}");
         if velocity > 0 {
             let _ = self.note_mask.insert(idx);
@@ -84,7 +84,7 @@ impl SineGenerator {
     }
 
     pub fn update_volume(&mut self, volume: u8) {
-        self.volume = volume as f32 / 127.;
+        self.volume = 1. + volume as f32 / 127.;
     }
 
     pub fn volume(&self) -> f32 {
