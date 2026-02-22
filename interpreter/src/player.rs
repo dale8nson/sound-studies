@@ -53,8 +53,11 @@ impl Player {
                     &OUTPUT_DEVICE.default_output_config().unwrap().config(),
                     move |data, _cb_info| {
                         let vol = u32_to_f32(volume.load(std::sync::atomic::Ordering::Relaxed));
-                        data.into_iter().for_each(|s| {
-                            let next = cons.try_pop().unwrap_or(0.0);
+                        let mut next = 0.0;
+                        data.into_iter().enumerate().for_each(|(idx, s)| {
+                            if idx % 2 == 0 {
+                                next = cons.try_pop().unwrap_or(0.0);
+                            }
                             *s = next * vol;
                         });
                     },

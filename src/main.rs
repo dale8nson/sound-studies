@@ -31,9 +31,6 @@ use sine_generator::{OUTPUT_DEVICE, STREAM_CONFIG, SineGenerator, note};
 
 use libc::{ECHO, ICANON, STDERR_FILENO, TCSANOW, c_char, getchar, poll, pollfd};
 
-// midi!();
-//
-
 #[inline(always)]
 fn note_on(synth: Arc<RwLock<SineGenerator>>, n: u8, velocity: u8) {
     let mut guard = synth.write().unwrap();
@@ -122,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         },
         |e| {
-            // println!("{e}");
+            println!("{e}");
         },
         None,
     )?;
@@ -230,7 +227,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = libc::tcsetattr(STDERR_FILENO, TCSANOW, &mut original_termios);
     }
 
-    // thread_handle.join().unwrap();
-    // _key_event_handle.join().unwrap();
     Ok(())
 }

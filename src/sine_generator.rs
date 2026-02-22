@@ -84,7 +84,7 @@ impl SineGenerator {
     }
 
     pub fn update_volume(&mut self, volume: u8) {
-        self.volume = 1. + volume as f32 / 127.;
+        self.volume = volume as f32 / 127.;
     }
 
     pub fn volume(&self) -> f32 {
@@ -208,6 +208,7 @@ pub fn note(n: f32) -> f32 {
     440. * 2.0_f32.powf((n - 69.) / 12.)
 }
 
+/// Delta angle for partial
 pub fn partial(freq: f32, partial: usize, sample_rate: u32, amplitude: f32) -> f32 {
     let mut ks = Vec::<f32>::new();
     ks.resize(partial, 0.0);
@@ -237,9 +238,10 @@ pub fn notes(sample_rate: u32) -> Vec<Vec<f32>> {
     for n in 1..=153 {
         let idx = n as usize;
         let freq = note(n as f32);
-        // let part_1 = partial_delta(freq, 2, sample_rate, 0.25);
-        // let part_2 = partial_delta(freq, 3, sample_rate, 0.25);
-        // let part_3 = partial_delta(freq, 4, sample_rate, 0.1);
+        // let fund = partial_delta(freq, 1, sample_rate, 1.);
+        // let part_1 = fund + partial_delta(freq, 2, sample_rate, 1.);
+        // let part_2 = fund + partial_delta(freq, 3, sample_rate, 1.);
+        // let part_3 = fund + partial_delta(freq, 4, sample_rate, 1.);
         // let part_4 = partial_delta(freq, 5, sample_rate, 0.1);
         let freq_delta_angle = delta(freq, sample_rate);
         // let part_delta_angle = 2. * PI * part_1 / sample_rate as f32;
