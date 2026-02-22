@@ -1,0 +1,12 @@
+[package]
+name = "interpreter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bit-set = "0.8.0"
+cpal = "0.17.3"
+pest = "2.8.6"
+macros = { path = "../macros"}
+ndarray = "0.17.2"
+ringbuf = "0.4.8"

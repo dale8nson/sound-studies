@@ -12,3 +12,8 @@ libc = "0.2.182"
 rusb = "0.9.4"
 bit-set = "0.8.0"
 ndarray = "0.17.2"
+pest_derive = "2.8.6"
+
+
+[workspace]
+members = ["./interpreter"]
