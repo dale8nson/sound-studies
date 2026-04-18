@@ -1,53 +1,128 @@
 # sound-studies
 
-Experimental multi-threaded algorithmic composition engine in Rust.
+Experimental algorithmic composition engine and music DSL compiler in Rust.
 
-> **Status: Work in progress / research.** This is an active area of exploration — code compiles and produces audio, but the API and architecture are subject to change.
+> **Status: Work in progress / research.** Active exploration — architecture and API subject to change.
 
 ## Overview
 
-`sound-studies` is an experiment in using Rust's concurrency primitives to drive real-time algorithmic music generation. Multiple composer threads run independently, each emitting `NoteOn` / `NoteOff` messages over MPSC channels to a central synthesis engine that renders audio via the system's audio output device.
-
-The current composition plays voices across a pentatonic pitch set with mathematically-scaled durations, producing overlapping melodic and sustained bass lines.
-
-## Architecture
-
-```
-Composer threads (t1, t2, t3)
-        │
-        │ NoteOn / NoteOff  (MPSC channel)
-        ▼
-   Synth engine  ──►  cpal audio output
-```
-
-- **Composers** are standard Rust threads that loop through pitch/duration patterns, sleeping between note events to control rhythm.
-- **Synth** maintains a per-note phase accumulator (`BitSet`-indexed) and renders samples using phase-based synthesis.
-- **Audio output** is handled by [`cpal`](https://github.com/RustAudio/cpal), targeting whatever default output device the OS provides.
+`sound-studies` is a workspace for experimenting with algorithmic music in Rust. The current focus is `compiler`: a pipeline that parses a custom music composition DSL (`.rsk` files) and compiles it to MIDI.
 
 ## Workspace layout
 
 ```
 sound-studies/
-└── interpreter/        # Main binary — composers + synth engine
-    ├── src/
-    │   ├── main.rs     # Composition logic and thread setup
-    │   └── synth.rs    # Synth engine, phase generation, sample rendering
-    └── macros/         # Proc macro utilities (keys! macro)
+├── compiler/           # .rsk DSL compiler — parser, AST, MIDI codegen
+│   ├── src/
+│   │   ├── main.rs             # Entry point: read .rsk file, parse, print AST
+│   │   ├── pest_parser.rs      # Pest-based PEG parser → AST
+│   │   └── compiler/
+│   │       ├── ast.rs          # AST type definitions
+│   │       ├── composer.rs     # Tree-walking compiler → MIDI events
+│   │       └── mod.rs
+│   ├── grammar-v2.pest         # Active PEG grammar
+│   └── prototype.rsk           # Example composition
+├── music-box/          # Experimental music utilities
+├── macros/             # Proc-macro utilities (keys! macro)
+└── src/main.rs         # Original multi-threaded synth engine
 ```
+
+## The `.rsk` DSL
+
+`.rsk` is a Lisp-like, expression-oriented language for algorithmic music composition. Programs are nested expressions that specify duration, tempo, pitch, register, and rhythm.
+
+**Grouping semantics:**
+
+| Syntax | Meaning |
+|--------|---------|
+| `(...)` | Sequence — expressions play in order |
+| `{...}` | Stack — expressions play simultaneously |
+| `[...]` | Set — unordered collection |
+| `a:b:c` | Ratio — proportional time subdivision |
+
+**Primitives (prefix keywords):**
+
+| Token | Meaning |
+|-------|---------|
+| `d<n>` | Fractional duration (e.g. `d4` = quarter note, `d8` = eighth note) |
+| `5'` / `2"` | Fixed duration in minutes / seconds |
+| `pc` | Pitch class |
+| `reg` | Register (octave) |
+| `r` | Rest |
+
+**Primitives (suffix keywords):**
+
+| Token | Meaning |
+|-------|---------|
+| `bpm` | Tempo in beats per minute |
+| `A` | Amplitude (velocity) |
+| `~` | Frequency (Hz) |
+
+**Operators:**
+
+| Token | Meaning |
+|-------|---------|
+| `><` | Intercalate — interleave two sequences |
+
+### Example
+
+```
+5' (
+  d4 (120 144 60 120) bpm
+  2:5:7:3 (
+    3:7:5:2 (
+      5:3:2:7 (
+        7:2:3:5 (
+          {
+            pc (
+              (5 3 2 7)
+              (7 2 3 5)
+              (2 5 7 3)
+              (3 7 5 2)
+            )
+            d (7.75 4.5 8 8.5)
+            >< r (4.25 4 4.5)
+            reg (4 5)
+          }
+        )
+      )
+    )
+  )
+)
+```
+
+This specifies a 5-minute composition, subdivided by nested ratios, with quarter-note durations, cycling BPM values, pitch-class sets interleaved with rests across two registers.
+
+## Compiler pipeline
+
+```
+.rsk source
+    │
+    │  Pest PEG parser (grammar-v2.pest)
+    ▼
+  Program AST
+    │
+    │  Composer — tree of scoped contexts
+    │  (duration · pitch class · tempo · register · velocity · instrument)
+    ▼
+  MIDI (midly)                   ← in progress
+```
+
+The parser is complete. The `Composer` walks the AST building a tree of `Ctx` nodes, each tracking its musical context inherited from its parent. Fixed durations (`5'`) create child contexts with an absolute length in microseconds; fractional durations (`d4`) are resolved relative to the current tempo. Scope type (Sequence / Stack / Set) determines how child events are serialised into MIDI tracks. Full MIDI event generation is in progress.
 
 ## Running
 
 ```bash
-cd interpreter
+# Parse a .rsk file and print the AST
+cd compiler
 cargo run
 ```
 
-Audio will begin playing immediately on your default output device. Ctrl+C to stop.
-
 ## Built with
 
+- [`pest`](https://github.com/pest-parser/pest) — PEG parser generator
+- [`midly`](https://github.com/nickel-lang/midly) — MIDI file I/O
 - [`cpal`](https://github.com/RustAudio/cpal) — cross-platform audio I/O
-- [`pest`](https://github.com/pest-parser/pest) — PEG parser (for notation parsing, in progress)
 - [`ndarray`](https://github.com/rust-ndarray/ndarray) — numerical arrays
+- [`ringbuf`](https://github.com/agerasev/ringbuf) — lock-free ring buffer
 - [`bit-set`](https://github.com/contain-rs/bit-set) — efficient note-mask representation
-- [`ringbuf`](https://github.com/agerasev/ringbuf) — lock-free ring buffer for sample passing
