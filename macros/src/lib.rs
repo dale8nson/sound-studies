@@ -105,20 +105,20 @@ pub fn midi_notes(_: TokenStream) -> TokenStream {
     TokenStream::new()
 }
 
-// #[proc_macro]
-// pub fn midi(_: TokenStream) -> TokenStream {
-//     quote! {
-//       fn note(n: f32) -> f32 {
-//           440. * 2.0_f32.powf((n - 49.) / 12.)
-//       }
-//       let mut midi = [0.0_f32; 89];
-//       midi.resize(89, 0.0);
-//       for n in 1..=88 {
-//           midi[n] = note(n as f32);
-//       }
-//     }
-//     .into()
-// }
+#[proc_macro]
+pub fn midi(_: TokenStream) -> TokenStream {
+    quote! {
+      fn note(n: f32) -> f32 {
+          440. * 2.0_f32.powf((n - 49.) / 12.)
+      }
+      let mut midi = [0.0_f32; 89];
+      midi.resize(89, 0.0);
+      for n in 1..=88 {
+          midi[n] = note(n as f32);
+      }
+    }
+    .into()
+}
 
 #[proc_macro]
 pub fn keys(_ts: proc_macro::TokenStream) -> proc_macro::TokenStream {

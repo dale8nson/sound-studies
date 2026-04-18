@@ -1,0 +1,226 @@
+body              = _{ SOI ~ scoped_exps ~ EOI }
+scoped_exps       = _{ scoped_exp+ }
+scoped_exp        =  {
+    lexp? ~ scope ~ infix_exp?
+}
+scope             =  {
+    parens
+  | brackets
+  | braces
+}
+parens            =  { "(" ~ exp ~ ")" }
+brackets          =  { "[" ~ exp ~ "]" }
+braces            =  { "{" ~ exp ~ "}" }
+exp               = _{ infix_exp }
+infix_exp         =  {
+    scoped_exp
+  | lexp ~ op ~ infix_exp?
+  | lexp ~ infix_exp
+  | lexp
+}
+lexp              = _{ tempo | literal | scope | ratio | ident | op }
+ident             = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* ~ prime* }
+tempo             =  { fraction_duration ~ "=" ~ (sequence | integer) ~ "bpm" }
+sequence          =  { "(" ~ lexp* ~ ")" }
+ratio             = ${ (integer | float) ~ (colon ~ (integer | float))+ }
+literal           = _{ duration | integer | float | beats_per_minute }
+beats_per_minute  =  { "bpm" }
+duration          =  ${ minutes | seconds | minutes ~ seconds | fraction_duration }
+minutes           = ${ integer ~ "'" }
+seconds           = ${ integer ~ "\"" }
+fraction_duration = ${ "d" ~ integer }
+integer           = @{ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+float             = @{ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ ~ exponent? }
+exponent          = @{ ("e" | "E") ~ ("+" | "-")? ~ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+op                = @{ ( frequency | colon | intercalate)+ }
+frequency = {"~"}
+intercalate = {"+|+"}
+register = {"reg"}
+colon = {":"}
+prime             =  { "`" }
+
+// topdecls    =  { topdecl+ }
+// topdecl     =  {
+// decls // | "class" ~ (scontext ~ "=>")? ~ tycls ~ tyvar ~ ("where" ~ cdecls)?
+// // | "instance" ~ (scontext ~ "=>")? ~ qtycls ~ inst ~ ("where" ~ idecls)
+// }
+// decls       =  { decl+ }
+// decl        =  {
+// gendecl
+// | (funlhs | pat) ~ rhs
+// | exp
+// }
+// cdecls      =  { cdecl+ }
+// cdecl       =  {
+// gendecl
+// | (funlhs | var) ~ rhs
+// }
+// idecls      =  { idecl+ }
+// idecl       =  { (funlhs | var) ~ rhs }
+// gendecl     =  {
+// vars ~ "::" ~ (context ~ "=>")? ~ type
+// | fixity ~ (integer)? ~ ops
+// }
+// ops         =  { op ~ ("," ~ op)* }
+// vars        =  { var ~ ("," ~ var)* }
+// fixity      =  { "infixl" | "infixr" | "infix" }
+// type        =  { btype ~ ("->" ~ type)? }
+// btype       =  { btype? ~ atype }
+// atype       =  {
+// gtycon
+// | tyvar
+// | "(" ~ type ~ ("," ~ type)* ~ ")"
+// | "[" ~ type ~ "]"
+// }
+// gtycon      =  {
+// qtycon
+// | "()"
+// | "[]"
+// | "(->)"
+// | "(" ~ "," ~ ","* ~ ")"
+// }
+// context     =  {
+// class
+// | "(" ~ class ~ ("," ~ class)* ~ ")"
+// }
+// class       =  {
+// qtycls ~ tyvar
+// | qtycls ~ "(" ~ tyvar ~ atype ~ atype* ~ ")"
+// }
+// scontext    =  {
+// simpleclass
+// | "(" ~ simpleclass ~ ("," ~ simpleclass)* ~ ")"
+// }
+// simpleclass =  { qtycls ~ tyvar }
+// simpletype  =  { tycon ~ tyvar+ }
+// constrs     =  { constr+ }
+// constr      =  {
+// con ~ ("!"? ~ atype)+
+// | (btype | "!" ~ atype) ~ conop ~ (btype | "!" ~ atype)
+// | con ~ (fielddecl+)?
+// }
+// newconstr   =  {
+// con ~ atype
+// | con ~ (var ~ "::" ~ type)?
+// }
+// fielddecl   =  { vars ~ "::" ~ (type | "!" ~ atype) }
+// deriving    =  { "deriving" ~ (dclass | "(" ~ dclass ~ ("," ~ dclass) ~ ")") }
+// dclass      =  { qtycls }
+// inst        =  {
+// gtycon
+// | "(" ~ tyvar ~ ("," ~ tyvar)* ~ ")"
+// | "[" ~ tyvar ~ "]"
+// | "(" ~ tyvar ~ "->" ~ tyvar ~ ")"
+// }
+// funlhs      =  {
+// var ~ apat+
+// | pat ~ varop ~ pat
+// | "(" ~ funlhs ~ ")" ~ apat+
+// }
+// rhs         =  { ":" ~ exp ~ ("where" ~ decls)? }
+// tyvar       =  { varid }
+// var         =  { varid | "(" ~ varsym ~ ")" }
+// varop       =  { varsym | "`" ~ varid ~ "`" }
+// varid       = @{ (ALPHABETIC | "_") ~ (ALPHABETIC | "_" | ASCII_DIGIT)* }
+// varsym      = @{ SYMBOL+ }
+// exp         =  {
+// infixexp ~ "::" ~ (context ~ "=>")? ~ type
+// | infixexp
+// }
+// infixexp    =  {
+// lexp ~ qop ~ infixexp
+// | "-" ~ infixexp
+// | lexp
+// }
+// lexp        =  {
+// sequence
+// | group
+// | set
+// | "\\" ~ apat* ~ "->" ~ exp
+// | "let" ~ decls ~ "in" ~ exp
+// | "if" ~ exp ~ "then" ~ exp ~ "else" ~ exp
+// | "case" ~ exp ~ "of" ~ alts*
+// | "do" ~ stmts*
+// | fexp
+// }
+// alts        =  { alt+ }
+// alt         =  {
+// pat ~ "->" ~ exp ~ ("where" ~ decls)?
+// }
+// stmts       =  { stmt+ ~ exp }
+// stmt        =  {
+// exp ~ ";"
+// | pat ~ "<-" ~ exp ~ ";"
+// | "let" ~ decls
+// }
+// fexp        =  { fexp? ~ aexp }
+// aexp        =  {
+// literal
+// | qvar
+// | gcon
+// | "(" ~ exp ~ ("," ~ exp)* ~ ")"
+// | "[" ~ exp ~ ("," ~ exp)* ~ "]"
+// | "[" ~ exp* ~ "]"
+// | "(" ~ infixexp ~ qop ~ ")"
+// }
+// pat         =  {
+// lpat ~ qconop ~ pat
+// | lpat
+// }
+// lpat        =  {
+// apat
+// | "-" ~ (integer | float)
+// | gcon ~ apat+
+// }
+// apat        =  {
+// var ~ ("@" ~ apat)?
+// | gcon
+// | qcon ~ (fpat ~ ("," ~ fpat)*)?
+// | literal
+// | "_"
+// | "(" ~ pat ~ ("," ~ pat)* ~ ")"
+// | "[" ~ pat ~ ("," ~ pat)* ~ "]"
+// | "~" ~ apat
+// }
+// fpat        =  { qvar ~ ":" ~ pat }
+// qvar        =  { qvarid | "(" ~ varsym ~ ")" }
+// gcon        =  {
+// "()"
+// | "[]"
+// | "(" ~ ","+ ~ ")"
+// | qcon
+// }
+// qcon        =  { qconid | "(" ~ qconsym ~ ")" }
+// qop         =  { qvarop | qconop }
+// scoped_exp  =  { aexp ~ delim_exp }
+// delim_exp   =  { sequence | group | set }
+// sequence    =  { "(" ~ exp* ~ ")" }
+// group       =  { "{" ~ exp* ~ "}" }
+// set         =  { "[" ~ exp ~ ("," ~ exp)* ~ "]" }
+// literal     =  { duration | float | integer }
+// duration    =  { minutes | seconds }
+// minutes     = @{ (integer | float) ~ "'" }
+// seconds     = @{ (integer | float) ~ "\"" }
+// tycls       =  { conid }
+// tycon       =  { conid }
+// conid       =  { varid }
+// integer     = @{ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+// float       = @{
+// DECIMAL_NUMBER ~ "." ~ DECIMAL_NUMBER ~ exponent?
+// | DECIMAL_NUMBER ~ exponent
+// }
+// exponent    =  { ("e" | "E") ~ ("+" | "-")? ~ DECIMAL_NUMBER }
+// op          =  { varop | conop }
+// con         =  { conid | "(" ~ consym ~ ")" }
+// conop       =  { consym | "`" ~ conid ~ "`" }
+// consym      =  { "(" ~ ":" ~ SYMBOL* ~ ")" }
+// modid       =  { (conid ~ ".")? ~ conid }
+// qvarid      =  { (modid ~ ".")? ~ varid }
+// qconid      =  { (modid ~ ".")? ~ conid }
+// qtycls      =  { (modid ~ ".")? ~ tycls }
+// qvarsym     =  { (modid ~ ".")? ~ varsym }
+// qconsym     =  { (modid ~ ".")? ~ consym }
+// qconop      =  { (modid ~ ".")? ~ conop }
+// qvarop      =  { (modid ~ ".")? ~ varop }
+// qtycon      =  { (modid ~ ".")? ~ tycon }
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }

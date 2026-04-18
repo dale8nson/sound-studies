@@ -1,0 +1,477 @@
+pub mod ast {
+    #[derive(Debug, Clone)]
+    pub struct Program {
+        pub exps: Vec<Exp>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Exp {
+        Single(Single),
+        Compound(Compound),
+        None,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Fractional(u64);
+
+    #[derive(Debug, Clone)]
+    pub enum Bpm {
+        Compound(Compound),
+        Pure(Pure),
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Compound {
+        Parens(Vec<Exp>),
+        Braces(Vec<Exp>),
+        Brackets(Vec<Exp>),
+        Ratio(Vec<Absolute>),
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Single {
+        Scalar(Scalar),
+        Op(Op),
+        Ident(Ident),
+        Primitive(Primitive),
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Scalar {
+        Duration(Duration),
+        Frequency(Absolute),
+        Pure(Pure),
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Frequency(Pure);
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum Op {
+        Colon,
+        Intercalate,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Ident(pub String);
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum Primitive {
+        Freq,
+        Dur,
+        Rest,
+        Pc,
+        Reg,
+        Bpm,
+        Amp,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Duration {
+        Fixed(Fixed),
+        Fractional(Absolute),
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Fixed {
+        pub minutes: Absolute,
+        pub seconds: Absolute,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Integer(u64);
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct Float(f64);
+
+    #[derive(Debug, Clone)]
+    pub struct Minutes(Pure);
+
+    #[derive(Debug, Clone)]
+    pub struct Seconds(Pure);
+
+    #[derive(Debug, Clone)]
+    pub enum Pure {
+        Relative(Relative),
+        Absolute(Absolute),
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Relative {
+        Integer { sign: Sign, val: u64 },
+        Float { sign: Sign, val: f64 },
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Absolute {
+        Integer(u64),
+        Float(f64),
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Sign {
+        Plus,
+        Minus,
+    }
+}
+
+pub mod composer {
+    use super::ast::*;
+    use midly::{
+        Header, MetaMessage, MidiMessage, Smf, Track, TrackEvent, TrackEventKind,
+        num::{u24, u28},
+    };
+    use std::ops::{Index, IndexMut};
+    const FPS: u32 = 30;
+
+    #[derive(Debug, Clone, Copy)]
+    struct MicroSeconds(u64);
+    type Term = u64;
+    struct Velocity(u8);
+
+    #[derive(Debug)]
+    struct Scope<'a> {
+        pub idx: ScopeIdx,
+        pub parent: ScopeIdx,
+        pub scope_type: ScopeType,
+        pub length: MicroSeconds,
+        pub pcs: Vec<Pc>,
+        pub bpm: Vec<Bpm>,
+        pub registers: Vec<Integer>,
+        pub velocities: Vec<Velocity>,
+        pub instruments: Vec<Instrument>,
+        pub children: Vec<ScopeIdx>,
+        pub instructions: Vec<Instruction<'a>>,
+    }
+
+    impl<'a> Scope<'a> {
+        pub fn new(scope_type: ScopeType, idx: ScopeIdx, parent_idx: ScopeIdx) -> Self {
+            Self {
+                scope_type,
+                idx,
+                parent: parent_idx,
+                ..Self::default()
+            }
+        }
+
+        pub fn sequence(idx: ScopeIdx, parent: ScopeIdx) -> Self {
+            Self {
+                scope_type: ScopeType::Sequence,
+                idx,
+                parent,
+                ..Self::default()
+            }
+        }
+
+        pub fn stack(idx: ScopeIdx, parent: ScopeIdx) -> Self {
+            Self {
+                scope_type: ScopeType::Stack,
+                idx,
+                parent,
+                ..Self::default()
+            }
+        }
+
+        pub fn set(idx: ScopeIdx, parent: ScopeIdx) -> Self {
+            Self {
+                scope_type: ScopeType::Set,
+                idx,
+                parent,
+                ..Self::default()
+            }
+        }
+
+        pub fn idx(mut self, idx: ScopeIdx) -> Self {
+            self.idx = idx;
+            self
+        }
+
+        pub fn parent(mut self, parent: ScopeIdx) -> Self {
+            self.parent = parent;
+            self
+        }
+
+        pub fn scope_type(mut self, scope_type: ScopeType) -> Self {
+            self.scope_type = scope_type;
+            self
+        }
+
+        pub fn length(mut self, length: MicroSeconds) -> Self {
+            self.length = length;
+            self
+        }
+
+        pub fn pcs(mut self, pcs: Vec<Pc>) -> Self {
+            self.pcs = pcs;
+            self
+        }
+
+        pub fn registers(mut self, registers: Vec<Integer>) -> Self {
+            self.registers = registers;
+            self
+        }
+
+        pub fn velocities(mut self, velocities: Vec<Velocity>) -> Self {
+            self.velocities = velocities;
+            self
+        }
+
+        pub fn instruments(mut self, instruments: Vec<Instrument>) -> Self {
+            self.instruments = instruments;
+            self
+        }
+
+        pub fn instructions(mut self, instructions: Vec<Instruction>) -> Self {
+            self.instructions = instructions;
+            self
+        }
+
+        pub fn child(mut self, child: ScopeIdx) -> Self {
+            self.children.push(child);
+            self
+        }
+    }
+
+    impl<'a> Default for Scope<'a> {
+        fn default() -> Self {
+            Self {
+                scope_type: ScopeType::Sequence,
+                idx: ScopeIdx::Idx(0),
+                parent: ScopeIdx::None,
+                length: MicroSeconds(0),
+                pcs: Vec::<Pc>::new(),
+                bpm: Vec::<Bpm>::new(),
+                registers: Vec::<Integer>::new(),
+                velocities: Vec::<Velocity>::new(),
+                instruments: Vec::<Instrument>::new(),
+                children: Vec::<ScopeIdx>::new(),
+                instructions: Vec::<Instruction>::new(),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    enum ScopeType {
+        Sequence,
+        Stack,
+        Set,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum ScopeIdx {
+        Idx(usize),
+        None,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct Pc(pub u8);
+
+    #[derive(Debug, Clone)]
+    struct Instrument(pub Vec<u8>);
+
+    #[derive(Debug, Clone)]
+    enum Instruction<'a> {
+        MidiMessage(MidiMessage),
+        MetaMessage(MetaMessage<'a>),
+    }
+
+    #[derive(Debug)]
+    pub struct Composer<'a> {
+        stack: Vec<Scope<'a>>,
+    }
+
+    impl<'a> Default for Composer<'a> {
+        fn default() -> Self {
+            let mut stack = Vec::<Scope<'a>>::new();
+            stack.push(Scope::default());
+            Self { stack }
+        }
+    }
+
+    impl<'a> Index<ScopeIdx> for Composer<'a> {
+        type Output = Scope<'a>;
+        fn index(&self, index: ScopeIdx) -> &Self::Output {
+            if let ScopeIdx::Idx(idx) = index {
+                &self.stack[idx]
+            } else {
+                panic!("Scope not found")
+            }
+        }
+    }
+
+    impl<'a> IndexMut<ScopeIdx> for Composer<'a> {
+        fn index_mut(&mut self, index: ScopeIdx) -> &mut Self::Output {
+            if let ScopeIdx::Idx(idx) = index {
+                &mut self.stack[idx]
+            } else {
+                panic!("Scope not found")
+            }
+        }
+    }
+
+    impl<'a> Composer<'a> {
+        pub fn compose(&mut self, mut ast: Program) -> Smf {
+            let mut es = ast.exps;
+            let f = compose_exps(es);
+            f();
+            todo!()
+        }
+
+        fn compose_exps(&mut self, mut exps: Vec<Exp>, ctx: ScopeIdx) -> impl FnMut() {
+            let mut es = exps.into_iter();
+            let init = self.compose_exp(es.next(), ctx);
+            let g = es.fold(init, |fs, e| {
+                fs.into_iter()
+                    .map(|f| *f(self.compose_exp(e, ctx)))
+                    .collect()
+            });
+        }
+
+        fn compose_exp(&mut self, node: Exp, parent: ScopeIdx) -> Vec<Box<dyn FnMut(Exp)>> {
+            let ctx = self.append_child(parent);
+            match node {
+                Exp::Single(s) => self.compose_single(s, ctx),
+                Exp::Compound(c) => self.compose_compound(c, ctx),
+            }
+        }
+
+        fn compose_single(&mut self, node: Single, ctx: ScopeIdx) -> Vec<Box<dyn FnMut()>> {
+            match node {
+                Single::Scalar(s) => self.compose_scalar(s, ctx),
+                Single::Primitive(p) => self.compose_primitive(p, ctx),
+                Single::Op(o) => self.compose_op(o, ctx),
+                Single::Ident(i) => self.compose_ident(i, ctx),
+            }
+        }
+
+        fn compose_scalar(
+            &mut self,
+            node: Scalar,
+            ctx: ScopeIdx,
+        ) -> Vec<Box<dyn FnMut(Exp) -> Exp>> {
+            match node {
+                Scalar::Duration(d) => {
+                    let fs = self.compose_duration(d, ctx);
+                    let mut ctx = self.append_child(
+                        ctx.idx,
+                        Scope::default().scope_type(ScopeType::Sequence).length(f()),
+                    );
+
+                    vec![Box::new(|e| {})]
+                }
+                Scalar::Frequency(freq) => {
+                    vec![self.compose_absolute(f, ctx)]
+                }
+                Scalar::Pure(p) => self.compose_pure(p, ctx),
+            }
+        }
+
+        fn compose_duration(
+            &mut self,
+            node: Duration,
+            ctx: ScopeIdx,
+        ) -> Vec<Box<dyn FnMut() -> MicroSeconds>> {
+            match node {
+                Duration::Fixed(Fixed { minutes, seconds }) => {
+                    vec![Box::new(|| {
+                        MicroSeconds((minutes * 60 + seconds) * 1_000_000)
+                    })]
+                }
+                Duration::Fractional(fr) => {}
+            }
+        }
+
+        fn compose_primitive(
+            &mut self,
+            node: Primitive,
+            ctx: ScopeIdx,
+        ) -> Vec<Box<dyn FnMut(Exp)>> {
+            match node {
+                Primitive::Amp => vec![Box::new(|exp| {
+                    let fs = self.compose_exp(exp, ctx);
+                    fs.iter().for_each(|f| ctx.velocities.push(f()));
+                })],
+                Primitive::Bpm => vec![todo!()],
+                Primitive::Dur => vec![todo!()],
+                Primitive::Freq => vec![todo!()],
+                Primitive::Pc => vec![todo!()],
+                Primitive::Reg => vec![todo!()],
+                Primitive::Rest => vec![todo!()],
+            }
+        }
+
+        fn compose_op(&mut self, node: Op, ctx: ScopeIdx) -> Vec<Box<dyn FnMut()>> {
+            match node {
+                Op::Colon => {
+                    todo!()
+                }
+                Op::Intercalate => {
+                    todo!()
+                }
+            }
+        }
+
+        fn compose_ident(
+            &mut self,
+            node: Ident,
+            ctx: ScopeIdx,
+        ) -> Vec<Box<dyn FnMut(Exp) -> String>> {
+            vec![Box::new(|e| node.0)]
+        }
+
+        fn compose_pure(&mut self, node: Pure, ctx: ScopeIdx) -> Vec<Box<dyn FnMut(Exp)>> {
+            match node {
+                Pure::Absolute(a) => vec![Box::new(|exp| self.compose_absolute(a, ctx))],
+                Pure::Relative(r) => self.compose_relative(r, ctx),
+            }
+        }
+
+        fn compose_absolute(
+            &mut self,
+            node: Absolute,
+            ctx: ScopeIdx,
+        ) -> Vec<Box<dyn FnMut() -> f64>> {
+            match node {
+                Absolute::Integer(mut i) => vec![Box::new(move || i as f64)],
+                Absolute::Float(mut f) => vec![Box::new(move || f)],
+            }
+        }
+
+        fn compose_relative(&mut self, node: Relative, ctx: ScopeIdx) -> Vec<Box<dyn FnMut(Exp)>> {
+            match node {
+                Relative::Integer { sign, val } => match sign {
+                    Sign::Plus => vec![Box::<dyn FnMut()>::new(move |n| n + val)],
+                    Sign::Minus => vec![Box::<dyn FnMut()>::new(move |n| n - val)],
+                },
+                Relative::Float { sign, val } => match sign {
+                    Sign::Plus => vec![Box::<dyn FnMut()>::new(move |n| n + val)],
+                    Sign::Minus => vec![Box::<dyn FnMut()>::new(move |n| n - val)],
+                },
+            }
+        }
+
+        fn compose_compound(&mut self, node: Compound, ctx: ScopeIdx) -> Vec<Box<dyn FnMut()>> {
+            match node {
+                Compound::Parens(exps) => {
+                    todo!()
+                }
+                Compound::Brackets(exps) => {
+                    todo!()
+                }
+                Compound::Braces(exps) => {
+                    todo!()
+                }
+                Compound::Ratio(abs) => {
+                    todo!()
+                }
+            }
+        }
+
+        fn append_child(&mut self, parent: ScopeIdx) -> ScopeIdx {
+            let idx = ScopeIdx::Idx(self.stack.len());
+            let mut scope = Scope::default().idx(idx).parent(parent);
+            self.stack.push(child);
+            child.idx
+        }
+    }
+}

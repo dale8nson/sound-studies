@@ -1,0 +1,96 @@
+process         = { SOI ~ (decl | tempo | expr | scoped_expr | single_line_comment)+ ~ EOI }
+scoped_expr     = { expr ~ delim_expr | delim_expr ~ expr }
+decl            = { var_decl | type_decl | type_class_decl }
+var_decl        = { ident ~ assign_rhs }
+type_decl       = { ident ~ double_colon ~ type_signature }
+assign_rhs      = { ":" ~ expr }
+exp             = { infix_expr }
+type_signature  = { type_const ~ (rt_arrow ~ type_const)* }
+type_const      = { ASCII_ALPHA_LOWER+ }
+type_class_decl = { "class" ~ ident ~ where_clause }
+where_clause    = { "where" ~ block }
+block           = { (decl | expr | scoped_expr)* }
+expr            = {
+    set
+  | duration
+  | pitch_class
+  | register
+  | dynamic
+  | ident
+  | ratio
+  | metre
+  | range
+  | delim_expr
+  | unit
+  | bool
+  | integer
+}
+
+single_line_comment           = _{ single_line_comment_delimiter ~ !single_line_comment_delimiter* }
+set                           =  { left_bracket ~ expr ~ (comma ~ expr)* ~ right_bracket }
+param                         =  { duration | dynamic | pitch_class | register }
+tempo                         =  { numeric_duration ~ eq_assign ~ (delim_expr | expr | scoped_expr) }
+delim_expr                    =  {
+    left_bracket ~ expr+ ~ right_bracket
+  | sequence
+  | left_brace ~ expr+ ~ right_brace
+}
+integer                       = @{ NUMBER+ }
+top_level_duration            =  { minutes | seconds }
+duration                      =  { top_level_duration | numeric_duration }
+numeric_duration              = @{ d ~ NUMBER+ }
+minutes                       = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? ~ minute }
+seconds                       = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? ~ second }
+sequence                      =  { left_parens ~ expr+ ~ right_parens }
+rt_arrow                      =  { "->" }
+ratio_expr                    =  { expr ~ colon ~ (expr | ratio_expr) }
+cond_expr                     =  { bool_expr ~ rt_arrow ~ expr }
+bool                          =  { "true" | "false" }
+unit                          =  { minute | second | bpm | pc | d }
+eq                            =  { "==" }
+mod                           =  { "%" }
+bool_expr                     =  { expr ~ eq ~ expr }
+metre                         =  { ("/" | "-")+ }
+register                      =  { '0'..'8' }
+pitch_class                   = @{ ASCII_DIGIT | "1" ~ '0'..'1' }
+dynamic                       =  { "pp" | "p" | "mp" | "mf" | "f" | "ff" | ASCII_DIGIT{1, 3} }
+ident                         = @{ (ASCII_ALPHA | "_")+ ~ ASCII_ALPHANUMERIC* }
+left_bracket                  =  { "[" }
+right_bracket                 =  { "]" }
+left_parens                   =  { "(" }
+right_parens                  =  { ")" }
+left_brace                    =  { "{" }
+right_brace                   =  { "}" }
+left_multiline_comment        =  { "{-" }
+right_multiline_comment       =  { "-}" }
+multiline_comment             =  { left_multiline_comment ~ ANY* ~ right_multiline_comment }
+comma                         =  { "," }
+int                           = @{ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+assign_op                     =  { colon | reassign | eq_assign }
+eq_assign                     =  { "=" }
+infix_expr                    =  { bool_expr | expr ~ infix_op ~ expr }
+infix_op                      =  { plus | min | star | slash | rt_arrow | interlace | dot }
+interlace                     =  { "~" }
+plus                          =  { "+" }
+min                           =  { "-" }
+star                          =  { "*" }
+slash                         =  { "/" }
+dot                           =  { "." }
+range                         = @{ param ~ ".." ~ param ~ (".." ~ param)* }
+colon                         =  { ":" }
+reassign                      =  { ".:" }
+real_plus                     = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+single_line_comment_delimiter =  { "--" }
+minute                        =  { "'" }
+second                        =  { "\"" }
+double_colon                  =  { "::" }
+suffix                        =  { bpm | pc }
+etc                           =  { "&" }
+ratio                         = @{ param ~ ":" ~ param }
+rest                          = @{ "r" ~ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT* }
+bpm                           =  { "bpm" }
+pc                            =  { "pc" }
+d                             =  { "d" }
+pitch_class_interval          =  { "i" ~ left_parens ~ NUMBER ~ comma ~ NUMBER ~ right_parens }
+pitch_interval                =  { "ip" ~ left_parens ~ NUMBER ~ comma ~ NUMBER ~ right_parens }
+WHITESPACE                    = _{ " " | "\t" | "\r" | "\n" }
