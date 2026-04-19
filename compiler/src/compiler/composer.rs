@@ -1,54 +1,23 @@
-use super::ast::*;
-use midly::{
-    Header, MetaMessage, MidiMessage, Smf, Track, TrackEvent, TrackEventKind,
-    num::{u24, u28},
+use crate::compiler::{
+    ast::utils::abs_to_f64,
+    codegen::{
+        utils::{duration_to_micros, transform_exps},
+        *,
+    },
 };
+
+use super::ast::*;
+
 use std::ops::{Index, IndexMut};
-const FPS: u32 = 30;
-
-#[derive(Debug, Clone, Copy)]
-struct MicroSeconds(u64);
-type Term = u64;
-struct Velocity(u8);
-type F<'a, Args, Ret> = Box<dyn FnMut(Args) -> Ret + 'a>;
-const ID: fn(Exp) -> Exp = move |exp| exp;
-
-#[derive(Clone, Debug)]
-enum ScopeType {
-    Sequence,
-    Stack,
-    Set,
-    None,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Ctx {
-    Idx(usize),
-    None,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Pc(pub i8);
-
-#[derive(Debug, Clone, Copy)]
-struct Upb(MicroSeconds);
-
-#[derive(Debug, Clone)]
-struct Instrument(pub Vec<u8>);
-
-#[derive(Debug, Clone)]
-enum Instruction<'a> {
-    MidiMessage(MidiMessage),
-    MetaMessage(MetaMessage<'a>),
-}
 
 #[derive(Debug, Default)]
 pub struct Composer<'a> {
-    idxs: Vec<Ctx>,
+    contexts: Vec<Ctx>,
+    tps: Tps,
     parents: Vec<Ctx>,
     scope_types: Vec<ScopeType>,
     lengths: Vec<MicroSeconds>,
-    pcs: Vec<Pc>,
+    pcs: Vec<Vec<Pc>>,
     tempos: Vec<Upb>,
     bpms: Vec<Bpm>,
     registers: Vec<Integer>,
@@ -69,7 +38,7 @@ impl<'a> Composer<'a> {
                 f64::round(1_000_000 as f64 / 120 as f64) as u64
             )),
         );
-        let mut f: F<Exp, Exp> = Box::new(ID);
+        let mut f: F<Exp, Exp> = ID();
         let f = compose_exps(es, f, ctx);
         f();
         todo!()
@@ -109,7 +78,7 @@ impl<'a> Composer<'a> {
                 let f: F<Exp, Exp> = self.compose_compound(c, child_ctx);
                 f
             }
-            Exp::None => Box::new(ID),
+            Exp::None => ID(),
         }
     }
 
@@ -136,7 +105,7 @@ impl<'a> Composer<'a> {
     }
 
     fn compose_compound(&mut self, node: Compound, ctx: Ctx) -> F<'static, Exp, Exp> {
-        let f = Box::new(ID);
+        let f = ID();
         match node {
             Compound::Parens(exps) => {
                 self.scope_type(ctx, ScopeType::Sequence);
@@ -150,7 +119,9 @@ impl<'a> Composer<'a> {
                 self.scope_type(ctx, ScopeType::Stack);
                 self.compose_exps(exps, f, ctx)
             }
-            Compound::Ratio(abs) => {}
+            Compound::Ratio(abss) => {
+                todo!()
+            }
         }
     }
 
@@ -168,42 +139,16 @@ impl<'a> Composer<'a> {
     fn compose_duration(&mut self, node: Duration, ctx: Ctx) -> F<'static, Exp, Exp> {
         match node {
             Duration::Fixed(Fixed { minutes, seconds }) => {
-                let micros = f64::round(
-                    match minutes {
-                        Absolute::Integer(int) => (int * 60 * 1_000_000) as f64,
-                        Absolute::Float(float) => float * 1_000_000 as f64,
-                    } + match seconds {
-                        Absolute::Integer(int) => (int * 1_000_000) as f64,
-                        Absolute::Float(float) => float * 1_000_000 as f64,
-                    },
-                ) as u64;
-
+                let micros = duration_to_micros(minutes, seconds);
                 let child_ctx = self.append_child(ctx);
-                self.length(child_ctx, MicroSeconds(micros));
-
-                let f: F<'static, Exp, Exp> = Box::new(move |exp| match exp {
-                    Exp::Simple(s) => {
-                        let mut f = self.compose_simple(s, child_ctx);
-                        f(exp)
-                    }
-                    Exp::Compound(c) => {
-                        let mut f = self.compose_compound(c, child_ctx);
-                        f(exp)
-                    }
-                    Exp::None => todo!(),
-                });
-                f
+                self.length(child_ctx, micros);
+                Box::new(move |exp| self.compose_exp(exp, ID(), child_ctx)(exp))
             }
             Duration::Fractional(fr) => {
                 let tempo: Upb = self.tempos[ctx.0];
-                let length = MicroSeconds(match fr {
-                    Absolute::Integer(int) => {
-                        f64::round(int as f64 / 4 as f64 * tempo.0.0 as f64) as u64
-                    }
-                    Absolute::Float(float) => {
-                        f64::round(float / 4 as f64 * tempo.0.0 as f64) as u64
-                    }
-                });
+                let fr = abs_to_f64(fr);
+                let multiplier = fr / 4 as f64;
+                let length = MicroSeconds(f64::round(multiplier * tempo.0.0 as f64) as u64);
 
                 let f: F<Exp, Exp> = Box::new(move |exp| match exp {
                     Exp::Simple(s) => {
@@ -214,20 +159,34 @@ impl<'a> Composer<'a> {
                         f(exp)
                     }
                     Exp::Compound(Compound::Parens(exps)) => {
-                        let mut fs: Vec<(F<'static, Exp, Exp>, Ctx)>::new();
-                        for ex in exps {
-                            let child = self.append_child(ctx);
-                            self.length(child, length);
-                            fs.push((self.compose_exp(ex, f, child), child));
-                        }
-                        let mut g: F<Exp, Exp> = Box::new(move |exp| {
-                            let mut g: F<Exp, Exp> = Box::new(ID);
-                            for (f, ctx) in fs {
-                                g = f(self.compose_exp(exp, g, ctx));
+                        let exps = transform_exps(
+                            exps,
+                            Box::new(move |exp| match exp {
+                                Exp::Simple(Simple::Scalar(Scalar::Pure(Pure::Absolute(abs)))) => {
+                                    let abs = abs_to_f64(abs);
+                                    Exp::Simple(Simple::Scalar(Scalar::Pure(Pure::Absolute(
+                                        Absolute::Integer(f64::round(multiplier * abs) as u64),
+                                    ))))
+                                }
+                                _ => exp,
+                            }),
+                        );
+                        let f: F<'static, Exp, Exp> = Box::new(move |exp| match exp {
+                            Exp::Simple(Simple::Primitive(Primitive::Suffix(Suffix::Bpm))) => {
+                                let h = move |exp| match exp {
+                                    Exp::Simple(Simple::Scalar(Scalar::Pure(Pure::Absolute(
+                                        abs,
+                                    )))) => {
+                                        let abs = abs_to_f64(abs);
+                                    }
+                                    _ => todo!(),
+                                };
+
+                                Exp::Compound(Compound::Parens(exps.zip(gs)))
                             }
-                            g(exp)
+                            _ => todo!(),
                         });
-                        g(exp)
+                        compound(transform_exps(exps, f))
                     }
                     Exp::None => todo!(),
                     _ => todo!(),
@@ -237,100 +196,68 @@ impl<'a> Composer<'a> {
         }
     }
 
-    fn compose_primitive(&mut self, node: Primitive, ctx: Ctx) -> F<'static, Exp, Primitive> {
+    fn compose_primitive(&mut self, node: Primitive, ctx: Ctx) -> F<'static, Exp, Exp> {
         match node {
-            Primitive::Prefix(p) => {
-                let f: F<'static, Exp, Exp> = Box::new(move |exp| match p {
-                    Prefix::Dur => match exp {
-                        Exp::Simple(s) => match s {
-                            Simple::Scalar(Scalar::Pure(Absolute(abs))) => match abs {
-                                Absolute::Integer(int) => {
-                                    let multiplier = int / 4;
-                                    match exp {
-                                        Exp::Simple(Simple::Scalar(Scalar::Pure(
-                                            Pure::Absolute(abs),
-                                        ))) => match abs {
-                                            Absolute::Integer(int2) => {}
-                                        },
-                                    }
-                                }
-                                Absolute::Float(float) => {}
-                            },
-                        },
-                        Exp::Compound(c) => todo!(),
-                        Exp::None => todo!(),
-                    },
-                    Prefix::Pc => match exp {
-                        Exp::Simple(s) => todo!(),
-                        Exp::Compound(c) => todo!(),
-                        Exp::None => todo!(),
-                    },
-                    Prefix::Reg => match exp {
-                        Exp::Simple(s) => todo!(),
-                        Exp::Compound(c) => todo!(),
-                        Exp::None => todo!(),
-                    },
-                    Prefix::Rest => match exp {
-                        Exp::Simple(s) => todo!(),
-                        Exp::Compound(c) => todo!(),
-                        Exp::None => todo!(),
-                    },
-                });
-                f
-            }
-            Primitve::Suffix(suf) => {
-                let f: F<'static, Exp, Exp> = Box::new(move |exp| match suf {
-                    Suffix::Amp => match exp {
-                        Exp::Simple(s) => todo!(),
-                        Exp::Compound(c) => todo!(),
-                        Exp::None => todo!(),
-                    },
-                    Suffix::Bpm => match exp {
-                        Exp::Simple(s) => match s {
-                            Simple::Scalar(Scalar::Pure(Pure::Absolute(abs))) => match abs {
-                                Absolute::Integer(int) => {
-                                    self.tempo(ctx, Upb(MicroSeconds(1_000_000 / int)));
-                                    Exp::None
-                                }
-                                Absolute::Float(float) => {
-                                    self.tempo(
-                                        ctx,
-                                        Upb(MicroSeconds(
-                                            f64::round(1_000_000 as f64 / float) as u64
-                                        )),
-                                    );
-                                    Exp::None
-                                }
-                            },
-                            _ => todo!(),
-                        },
-                        Exp::Compound(c) => todo!(),
-                        Exp::None => todo!(),
-                    },
-                    Suffix::Freq => match exp {
-                        Exp::Simple(s) => todo!(),
-                        Exp::Compound(c) => todo!(),
-                        Exp::None => todo!(),
-                    },
-                });
-                f
-            }
+            Primitive::Prefix(p) => self.compose_prefix(p, ctx),
+
+            Primitive::Suffix(suf) => Box::new(move |exp| self.compose_suffix(suf, ctx)(exp)),
         }
     }
 
-    // fn compose_primitive(&mut self, node: Primitive, ctx: Ctx) -> F<'static, Exp, Exp> {
-    //     match node {
-    //         Primitive::Amp => todo!(),
-    //         Primitive::Bpm => {
-    //           let f: F<'static, Exp, Exp> = Box::new(move |exp| )
-    //         },
-    //         Primitive::Freq => todo!(),
-    //         Primitive::Dur => todo!(),
-    //         Primitive::Pc => todo!(),
-    //         Primitive::Reg => todo!(),
-    //         Primitive::Rest => todo!(),
-    //     }
-    // }
+    fn compose_prefix(&mut self, node: Prefix, ctx: Ctx) -> F<'static, Exp, Exp> {
+        match node {
+            Prefix::Dur => todo!(),
+            Prefix::Pc => {
+                let f: F<'static, Exp, Exp> = Box::new(move |exp| match exp {
+                    Exp::Compound(c) => match c {
+                        compound @ Compound::Braces(exps)
+                        | compound @ Compound::Parens(exps)
+                        | compound @ Compound::Brackets(exps) => {
+                            let g: F<'static, Exp, Exp> = Box::new(move |exp| match exp {
+                                Exp::Simple(Simple::Scalar(Scalar::Pure(Pure::Absolute(
+                                    Absolute::Integer(int),
+                                )))) => {
+                                    self.pc(ctx, Pc(int as u8));
+                                }
+                                _ => unreachable!(),
+                            });
+                            compound(transform_exps(exps, g))
+                        }
+                        _ => todo!(),
+                    },
+                    _ => todo!(),
+                });
+                f
+            }
+            Prefix::Reg => todo!(),
+            Prefix::Rest => todo!(),
+        }
+    }
+
+    fn compose_suffix(&mut self, node: Suffix, ctx: Ctx) -> F<'static, Exp, Exp> {
+        match node {
+            Suffix::Amp => todo!(),
+            Suffix::Bpm => Box::new(move |exp| match exp {
+                Exp::Simple(Simple::Scalar(Scalar::Pure(Pure::Absolute(abs)))) => {
+                    let bpm = abs_to_f64(abs);
+                    self.tempo(ctx, Upb(MicroSeconds(bpm as u64)));
+                    Exp::None
+                }
+                Exp::Compound(comp) => match comp {
+                    compound @ Compound::Parens(exps)
+                    | compound @ Compound::Braces(exps)
+                    | compound @ Compound::Brackets(exps) => {
+                        dbg!(compound);
+                        let ctx = self.append_child(ctx);
+                        compound(transform_exps(exps, g(exp)))
+                    }
+                    _ => todo!(),
+                },
+                _ => Exp::None,
+            }),
+            Suffix::Freq => todo!(),
+        }
+    }
 
     fn compose_op(&mut self, node: Op, ctx: Ctx) -> F<'static, Exp, Exp> {
         match node {
@@ -394,7 +321,7 @@ impl<'a> Composer<'a> {
 
     fn pc(&mut self, idx: Ctx, pc: Pc) {
         if let Ctx::Idx(id) = idx {
-            self.pcs[id] = pc;
+            self.pcs[id].push(pc);
         }
     }
 
@@ -441,9 +368,9 @@ impl<'a> Composer<'a> {
     }
 
     fn append_child(&mut self, parent: Ctx) -> Ctx {
-        let id = self.idxs.len();
+        let id = self.contexts.len();
         let idx = Ctx::Idx(id);
-        self.idxs.push(idx);
+        self.contexts.push(idx);
         self.parents.push(parent);
         self.children[parent].push(idx);
         self.children.push(Vec::<Ctx>::new());

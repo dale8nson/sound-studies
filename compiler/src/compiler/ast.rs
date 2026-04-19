@@ -3,16 +3,46 @@ use std::{
     ops::{Add, Div, Mul, Rem, Sub},
 };
 
+// #[macro_export]
+// macro_rules! unpack {
+//   ($enum: ident , $($pat: ident )->* $(->)? $last:ident $( -> ($ty: ident))?) => {
+//       match $enum {
+//         $($pat::)*$last(param : $ty) => param,
+//         $($pat::)*$last => $last
+//         $last(param: $ty) => param
+//         other => other
+//       }
+//     }
+// }
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub exps: Vec<Exp>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Exp {
     Simple(Simple),
     Compound(Compound),
     None,
+}
+
+impl Exp {
+    pub fn to_simple(self) -> Simple {
+        if let Exp::Simple(simple) = self {
+            simple
+        } else {
+            todo!()
+        }
+    }
+
+    pub fn to_compound(self) -> Compound {
+        if let Exp::Compound(compound) = self {
+            compound
+        } else {
+            todo!()
+        }
+    }
 }
 
 impl Add for Exp {
@@ -42,82 +72,6 @@ impl Add for Exp {
     }
 }
 
-// impl Sub for Exp {
-//     type Output = Exp;
-//     fn sub(self, rhs: Self) -> Self::Output {
-//         match self {
-//             Exp::Simple(s1) => match rhs {
-//                 Exp::Simple(s2) => s1 - s2,
-//                 Exp::Compound(c) => s1 - c,
-//                 Exp::None => self,
-//             },
-//             Exp::Compound(c1) => match rhs {
-//                 Exp::Simple(s) => c1 - s,
-//                 Exp::Compound(c2) => c1 - c2,
-//                 Exp::None => self,
-//             },
-//             Exp::None => rhs,
-//         }
-//     }
-// }
-
-// impl Mul for Exp {
-//     type Output = Exp;
-//     fn mul(self, rhs: Self) -> Self::Output {
-//         match self {
-//             Exp::Simple(s1) => match rhs {
-//                 Exp::Simple(s2) => s1 * s2,
-//                 Exp::Compound(c) => s1 * c,
-//                 Exp::None => self,
-//             },
-//             Exp::Compound(c1) => match rhs {
-//                 Exp::Simple(s) => c1 * s,
-//                 Exp::Compound(c2) => c1 * c2,
-//                 Exp::None => self,
-//             },
-//             Exp::None => rhs,
-//         }
-//     }
-// }
-
-// impl Div for Exp {
-//     type Output = Exp;
-//     fn div(self, rhs: Self) -> Self::Output {
-//         match self {
-//             Exp::Simple(s1) => match rhs {
-//                 Exp::Simple(s2) => s1 / s2,
-//                 Exp::Compound(c) => s1 / c,
-//                 Exp::None => self,
-//             },
-//             Exp::Compound(c1) => match rhs {
-//                 Exp::Simple(s) => c1 / s,
-//                 Exp::Compound(c2) => c1 / c2,
-//                 Exp::None => self,
-//             },
-//             Exp::None => rhs,
-//         }
-//     }
-// }
-
-// impl Rem for Exp {
-//     type Output = Exp;
-//     fn rem(self, rhs: Self) -> Self::Output {
-//         match self {
-//             Exp::Simple(s1) => match rhs {
-//                 Exp::Simple(s2) => s1 % s2,
-//                 Exp::Compound(c) => s1 % c,
-//                 Exp::None => self,
-//             },
-//             Exp::Compound(c1) => match rhs {
-//                 Exp::Simple(s) => c1 % s,
-//                 Exp::Compound(c2) => c1 % c2,
-//                 Exp::None => self,
-//             },
-//             Exp::None => rhs,
-//         }
-//     }
-// }
-
 #[derive(Debug, Clone, Default)]
 pub struct Fractional(pub Absolute);
 
@@ -136,90 +90,6 @@ pub enum Compound {
     Brackets(Vec<Exp>),
     Ratio(Vec<Absolute>),
 }
-
-// impl Add for Compound<Rhs = Simple> {
-//     type Output = Exp;
-//     fn add(self, rhs: Simple) -> Self::Output {
-//         match self {
-//             Compound::Parens(p) => match rhs {},
-//             Compound::Braces(b) => match rhs {},
-//             Compound::Brackets(b) => match rhs {},
-//             Compound::Ratio(r) => match rhs {},
-//         }
-//     }
-// }
-
-// impl Sub<Rhs = Simple> for Compound {
-//     type Output = Exp;
-//     fn sub(self, rhs: Simple) -> Self::Output {
-//         match self {
-//             Compound::Parens(p) => match rhs {},
-//             Compound::Braces(b) => match rhs {},
-//             Compound::Brackets(b) => match rhs {},
-//             Compound::Ratio(r) => {
-//                 let sum = r.iter().map(|Absolute::Integer(int)| int).sum();
-
-//             }
-//         }
-//     }
-// }
-
-// impl Mul for Exp {
-//     type Output = Exp;
-//     fn mul(self, rhs: Self) -> Self::Output {
-//         match self {
-//             Exp::Simple(s1) => match rhs {
-//                 Exp::Simple(s2) => s1 * s2,
-//                 Exp::Compound(c) => s1 * c,
-//                 Exp::None => self,
-//             },
-//             Exp::Compound(c1) => match rhs {
-//                 Exp::Simple(s) => c1 * s,
-//                 Exp::Compound(c2) => c1 * c2,
-//                 Exp::None => self,
-//             },
-//             Exp::None => rhs,
-//         }
-//     }
-// }
-
-// impl Div for Exp {
-//     type Output = Exp;
-//     fn div(self, rhs: Self) -> Self::Output {
-//         match self {
-//             Exp::Simple(s1) => match rhs {
-//                 Exp::Simple(s2) => s1 / s2,
-//                 Exp::Compound(c) => s1 / c,
-//                 Exp::None => self,
-//             },
-//             Exp::Compound(c1) => match rhs {
-//                 Exp::Simple(s) => c1 / s,
-//                 Exp::Compound(c2) => c1 / c2,
-//                 Exp::None => self,
-//             },
-//             Exp::None => rhs,
-//         }
-//     }
-// }
-
-// impl Rem for Exp {
-//     type Output = Exp;
-//     fn rem(self, rhs: Self) -> Self::Output {
-//         match self {
-//             Exp::Simple(s1) => match rhs {
-//                 Exp::Simple(s2) => s1 % s2,
-//                 Exp::Compound(c) => s1 % c,
-//                 Exp::None => self,
-//             },
-//             Exp::Compound(c1) => match rhs {
-//                 Exp::Simple(s) => c1 % s,
-//                 Exp::Compound(c2) => c1 % c2,
-//                 Exp::None => self,
-//             },
-//             Exp::None => rhs,
-//         }
-//     }
-// }
 
 #[derive(Debug, Clone)]
 pub enum Simple {
@@ -315,4 +185,15 @@ pub enum Absolute {
 pub enum Sign {
     Plus,
     Minus,
+}
+
+pub mod utils {
+    use crate::compiler::ast::Absolute;
+
+    pub fn abs_to_f64(abs: Absolute) -> f64 {
+        match abs {
+            Absolute::Integer(int) => int as f64,
+            Absolute::Float(float) => float,
+        }
+    }
 }
