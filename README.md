@@ -50,7 +50,7 @@ Programs are nested expressions that specify duration, tempo, pitch, register, a
 | Token | Meaning |
 |-------|---------|
 | `d<n>` | Fractional duration (e.g. `d4` = quarter note, `d8` = eighth note) |
-| `5'` / `2"` | Fixed duration in minutes / seconds |
+| `5'` `2"` `5'2"` | Fixed duration — minutes, seconds, or combined |
 | `pc` | Pitch class |
 | `reg` | Register (octave) |
 | `r` | Rest |
@@ -113,7 +113,7 @@ This specifies a 5-minute composition, subdivided by nested ratios, with quarter
   MIDI (midly)                   ← in progress
 ```
 
-The parser is complete. The `Composer` walks the AST building a tree of `Ctx` nodes, each tracking its musical context inherited from its parent. Fixed durations (`5'`) create child contexts with an absolute length in microseconds; fractional durations (`d4`) are resolved relative to the current tempo. Scope type (Sequence / Stack / Set) determines how child events are serialised into MIDI tracks. Full MIDI event generation is in progress.
+The parser is complete. The `Composer` walks the AST building a tree of `Ctx` nodes, each tracking its musical context inherited from its parent. Fixed durations (`5'2"`) create child contexts with an absolute length in microseconds; fractional durations (`d4`) are resolved relative to the current tempo. Scope type (Sequence / Stack / Set) determines how child events are serialised into MIDI tracks. Full MIDI event generation is in progress.
 
 ## Running
 
