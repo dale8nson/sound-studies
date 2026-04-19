@@ -32,7 +32,7 @@ sound-studies/
 `.rsk` is an expression-oriented language for algorithmic music composition drawing on two programming paradigms:
 
 - **Concatenative** — at the surface level, meaning arises from juxtaposition. Placing expressions next to each other implicitly threads a musical context from left to right, with no explicit binding operator. `d4 (120 144 60 120) bpm` is three tokens in sequence: a duration that sets context, a list that supplies values, and a suffix keyword that consumes them. This is the same model used by languages like Forth and Joy.
-- **Functional** — in the compiler implementation, each node in the AST compiles to a closure (`F<Exp, Exp>`), and the compiler pipeline is built by composing those closures. Concatenative languages often have this property: Joy's formal semantics are defined entirely in terms of function composition.
+- **Functional** — in the compiler implementation, each node in the AST compiles to a closure (`F<Exp, Exp>`), and the compiler pipeline is built by composing those closures. Concatenative languages often have this property: Joy's formal semantics are defined entirely in terms of function composition. A planned extension will bring Haskell-style syntax to the DSL itself — allowing users to define higher-kinded types, custom data types, and functions directly in `.rsk` files. This would make the language self-extensible: composers could build and share libraries of reusable abstractions (scales, rhythmic patterns, transformations) in the same language they write music in.
 
 Programs are nested expressions that specify duration, tempo, pitch, register, and rhythm.
 
