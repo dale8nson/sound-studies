@@ -61,7 +61,7 @@ Programs are nested expressions that specify duration, tempo, pitch, register, a
 |-------|---------|
 | `bpm` | Tempo in beats per minute |
 | `A` | Amplitude (velocity) |
-| `~` | Frequency (Hz) |
+| `Hz` | Frequency (Hz) |
 
 **Operators:**
 
